@@ -9,8 +9,8 @@ A native Nautilus (GNOME Files) extension that allows you to right-click and cre
 * **Custom Wizard:** Mix and match rules, set exact hour limits, and choose between moving to Trash or Permanent Deletion.
 
 ## Installation
-Run the following commands in your terminal:
+
+Run the following command in your terminal to automatically download and install the wizard:
+
 ```bash
-git clone [https://github.com/yourusername/custom-folder-wizard.git](https://github.com/yourusername/custom-folder-wizard.git)
-cd custom-folder-wizard
-./install.sh
+curl -sSL [https://raw.githubusercontent.com/Siddharth-Balakrishnan/custom-folder-wizard/main/install.sh](https://raw.githubusercontent.com/Siddharth-Balakrishnan/custom-folder-wizard/main/install.sh) | bash

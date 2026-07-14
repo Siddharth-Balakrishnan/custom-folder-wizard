@@ -6,7 +6,7 @@ echo " Installing Custom Folder Wizard..."
 echo "========================================"
 
 echo "=> 1. Installing dependencies (requires sudo)..."
-sudo apt update
+sudo apt update || true
 sudo apt install -y zenity trash-cli gocryptfs python3-nautilus attr git
 
 echo "=> 2. Fetching files from GitHub..."
