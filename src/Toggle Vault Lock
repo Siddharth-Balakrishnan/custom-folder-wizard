@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Get the folder the user right-clicked on
+TARGET="$1"
+
+# Ensure a folder was actually selected
+if [ -z "$TARGET" ]; then
+    zenity --error --text="Please right-click on a specific vault folder to lock/unlock." --width=300
+    exit 1
+fi
+
+# 1. Check if the folder is currently mounted (Unlocked)
+if mountpoint -q "$TARGET"; then
+    # Lock it by unmounting
+    fusermount -u "$TARGET"
+    zenity --info --text="Vault Locked: $TARGET"
+else
+    # 2. Check if it's a valid locked vault (looks for the hidden .cipher folder)
+    ENCRYPTED_DIR="$(dirname "$TARGET")/.$(basename "$TARGET").cipher"
+    
+    if [ -d "$ENCRYPTED_DIR" ]; then
+        PASSWORD=$(zenity --password --title="Unlock Vault")
+        if [ -z "$PASSWORD" ]; then exit 0; fi
+        
+        # Attempt to decrypt and mount
+        if echo "$PASSWORD" | gocryptfs -quiet "$ENCRYPTED_DIR" "$TARGET"; then
+            zenity --info --text="Vault Unlocked: $TARGET"
+        else
+            zenity --error --text="Incorrect password. Vault remains locked." --width=300
+        fi
+    else
+        zenity --error --text="This does not appear to be a Secure Vault." --width=300
+    fi
+fi

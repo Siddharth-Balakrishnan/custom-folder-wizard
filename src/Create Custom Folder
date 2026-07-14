@@ -1,0 +1,133 @@
+#!/bin/bash
+
+# Nautilus runs scripts in the directory you currently have open
+TARGET_DIR="$PWD"
+
+# ==========================================
+# STEP 1: PROMPT FOR FOLDER NAME
+# ==========================================
+FOLDER_NAME=$(zenity --entry \
+    --title="Create Custom Folder" \
+    --text="Enter the name for your new folder:" \
+    --width=350)
+
+# Exit silently if the user clicks Cancel or enters nothing
+if [ -z "$(echo "$FOLDER_NAME" | xargs)" ]; then exit 0; fi
+
+# EDGE CASE: Prevent overwriting an existing folder
+NEW_FOLDER_PATH="$TARGET_DIR/$FOLDER_NAME"
+if [ -d "$NEW_FOLDER_PATH" ]; then
+    zenity --error --text="Setup Failed: A folder named '$FOLDER_NAME' already exists here." --width=300
+    exit 1
+fi
+
+# ==========================================
+# STEP 2: PROMPT FOR FOLDER BEHAVIOR
+# ==========================================
+FOLDER_TYPE=$(zenity --list \
+    --title="Select Folder Behavior" \
+    --text="Choose the rules for '$FOLDER_NAME':" \
+    --radiolist \
+    --column="Select" --column="Type" \
+    TRUE "Wizard (Custom Setup)" \
+    FALSE "Auto-Delete Content (48 hrs)" \
+    FALSE "Auto-Delete Folder (24 hrs)" \
+    FALSE "Secure Vault (Password)" \
+    --width=450 --height=350)
+
+if [ -z "$FOLDER_TYPE" ]; then exit 0; fi
+
+# ==========================================
+# STEP 3: HANDLE SELECTION
+# ==========================================
+case "$FOLDER_TYPE" in
+    "Wizard (Custom Setup)")
+        # Launch the unified form specifically for the Wizard settings
+        OUTPUT=$(zenity --forms \
+            --title="Wizard: $FOLDER_NAME" \
+            --text="Configure custom settings for '$FOLDER_NAME':" \
+            --add-entry="1. Delete ENTIRE folder after X hours (0 for never):" \
+            --add-entry="2. Delete CONTENTS after X hours (0 for never):" \
+            --add-combo="3. Deletion Method:" --combo-values="Move to Trash|Permanently Delete" \
+            --add-combo="4. Secure Vault (Password Protect)?" --combo-values="No|Yes" \
+            --add-password="5. Vault Password (Leave blank if No):" \
+            --separator="|" \
+            --width=550)
+
+        if [ -z "$OUTPUT" ]; then exit 0; fi
+
+        # Extract variables
+        FW_HOURS=$(echo "$OUTPUT" | awk -F'|' '{print $1}')
+        CW_HOURS=$(echo "$OUTPUT" | awk -F'|' '{print $2}')
+        DEL_METHOD=$(echo "$OUTPUT" | awk -F'|' '{print $3}')
+        SECURE=$(echo "$OUTPUT" | awk -F'|' '{print $4}')
+        PASSWORD=$(echo "$OUTPUT" | awk -F'|' '{print $5}')
+
+        # Default empty hour fields to 0
+        FW_HOURS=${FW_HOURS:-0}
+        CW_HOURS=${CW_HOURS:-0}
+
+        # EDGE CASE: Ensure time limits are valid positive numbers (no letters or symbols)
+        if ! [[ "$FW_HOURS" =~ ^[0-9]+$ ]] || ! [[ "$CW_HOURS" =~ ^[0-9]+$ ]]; then
+            zenity --error --text="Setup Failed: Time limits must be valid, positive numbers." --width=300
+            exit 1
+        fi
+
+        # EDGE CASE: Ensure password is provided if vault is selected
+        if [ "$SECURE" = "Yes" ] && [ -z "$PASSWORD" ]; then
+            zenity --error --text="Setup Failed: You selected 'Secure Vault' but left the password blank." --width=300
+            exit 1
+        fi
+
+        # Execute Folder Creation
+        if [ "$SECURE" = "Yes" ]; then
+            ENCRYPTED_DIR="$TARGET_DIR/.$FOLDER_NAME.cipher"
+            mkdir "$ENCRYPTED_DIR"
+            mkdir "$NEW_FOLDER_PATH"
+            echo "$PASSWORD" | gocryptfs -init -quiet "$ENCRYPTED_DIR"
+            echo "$PASSWORD" | gocryptfs -quiet "$ENCRYPTED_DIR" "$NEW_FOLDER_PATH"
+            SECURE_STATUS="Yes (Unlocked)"
+        else
+            mkdir "$NEW_FOLDER_PATH"
+            SECURE_STATUS="No"
+        fi
+
+        # Apply Dynamic Metadata Tags
+        setfattr -n user.creation_time -v "$(date +%s)" "$NEW_FOLDER_PATH"
+        setfattr -n user.wizard -v "true" "$NEW_FOLDER_PATH"
+        setfattr -n user.fw_hours -v "$FW_HOURS" "$NEW_FOLDER_PATH"
+        setfattr -n user.cw_hours -v "$CW_HOURS" "$NEW_FOLDER_PATH"
+        
+        if [ "$DEL_METHOD" = "Permanently Delete" ]; then
+            setfattr -n user.del_method -v "permanent" "$NEW_FOLDER_PATH"
+        else
+            setfattr -n user.del_method -v "trash" "$NEW_FOLDER_PATH"
+        fi
+
+        zenity --info --text="Wizard Complete!\n\nFolder: $FOLDER_NAME\nFolder Wipe: ${FW_HOURS}h\nContent Wipe: ${CW_HOURS}h\nMethod: $DEL_METHOD\nEncrypted: $SECURE_STATUS"
+        ;;
+
+    "Auto-Delete Content (48 hrs)")
+        mkdir "$NEW_FOLDER_PATH"
+        setfattr -n user.folder_type -v "content_48" "$NEW_FOLDER_PATH"
+        zenity --info --text="Created: $FOLDER_NAME\nBehavior: Contents wipe after 48 hours."
+        ;;
+        
+    "Auto-Delete Folder (24 hrs)")
+        mkdir "$NEW_FOLDER_PATH"
+        setfattr -n user.folder_type -v "folder_24" "$NEW_FOLDER_PATH"
+        setfattr -n user.creation_time -v "$(date +%s)" "$NEW_FOLDER_PATH"
+        zenity --info --text="Created: $FOLDER_NAME\nBehavior: Entire folder deletes after 24 hours."
+        ;;
+        
+    "Secure Vault (Password)")
+        PASSWORD=$(zenity --password --title="Set Password for $FOLDER_NAME")
+        if [ -z "$PASSWORD" ]; then exit 0; fi
+        ENCRYPTED_DIR="$TARGET_DIR/.$FOLDER_NAME.cipher"
+        mkdir "$ENCRYPTED_DIR"
+        mkdir "$NEW_FOLDER_PATH"
+        echo "$PASSWORD" | gocryptfs -init -quiet "$ENCRYPTED_DIR"
+        echo "$PASSWORD" | gocryptfs -quiet "$ENCRYPTED_DIR" "$NEW_FOLDER_PATH"
+        zenity --info --text="Created: $FOLDER_NAME\nBehavior: Secure Vault initialized."
+        ;;
+esac
