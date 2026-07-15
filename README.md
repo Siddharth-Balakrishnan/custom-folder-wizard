@@ -13,4 +13,4 @@ A native Nautilus (GNOME Files) extension that allows you to right-click and cre
 Run the following command in your terminal to automatically download and install the wizard:
 
 ```bash
-curl -sSL [https://raw.githubusercontent.com/Siddharth-Balakrishnan/custom-folder-wizard/main/install.sh](https://raw.githubusercontent.com/Siddharth-Balakrishnan/custom-folder-wizard/main/install.sh) | bash
+curl -sSL https://raw.githubusercontent.com/Siddharth-Balakrishnan/custom-folder-wizard/main/install.sh | bash
